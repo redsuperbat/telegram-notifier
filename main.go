@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -17,11 +18,19 @@ type ChatStartedEvent struct {
 	ChatId    string `json:"chatId"`
 }
 
-func main() {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatalf("Error loading .env file")
+func loadEnvVars() {
+	log.Println("Loading env variables")
+	if _, err := os.Stat(".env"); errors.Is(err, os.ErrNotExist) {
+		log.Println("No .env file present skipping parsing it.")
+		return
 	}
+	if err := godotenv.Load(".env"); err != nil {
+		log.Fatalf("Error loading .env file %v", err.Error())
+	}
+}
+
+func main() {
+	loadEnvVars()
 	botToken := os.Getenv("TELEGRAM_BOT_KEY")
 	if botToken == "" {
 		log.Fatalln("No telegram bot token provided")
@@ -44,9 +53,11 @@ func main() {
 	bot, err := tgbotapi.NewBotAPI(botToken)
 
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("Unable to create telegram bot API because of %v", err.Error())
 	}
 
+	// Listen to one topic and send a message to telegram if someone wants to start a chat
+	log.Println("Started the kafka connection and reading messages from kafka")
 	for kafkaMsg := range kafkaMsgChan {
 		var event ChatStartedEvent
 		if err := json.Unmarshal(kafkaMsg, &event); err != nil {
@@ -56,9 +67,13 @@ func main() {
 		if event.EventType == "ChatStartedEvent" {
 			url := "https://max.netterberg.com/chat/" + event.ChatId
 			text := fmt.Sprintf("Hey, someone wants to chat with you!\nVisit %s to chat with them!", url)
-
 			msg := tgbotapi.NewMessage(int64(chatId), text)
-			bot.Send(msg)
+			log.Printf("New chat was started sending %s to chat %v", text, chatId)
+			if _, err := bot.Send(msg); err != nil {
+				log.Printf("Unable to send message because of %v", err.Error())
+			}
+		} else {
+			log.Println("Event was not a chat started event, continuing...")
 		}
 	}
 
