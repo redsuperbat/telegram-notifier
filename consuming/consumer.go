@@ -30,7 +30,7 @@ func NewConsumer(c chan []byte, groupId string) (func(), func() error) {
 		MinBytes:    10e3, // 10KB
 		MaxBytes:    10e6, // 10MB
 		Partition:   0,
-		StartOffset: kafka.FirstOffset,
+		StartOffset: kafka.LastOffset,
 		MaxWait:     time.Millisecond * 200,
 	})
 
