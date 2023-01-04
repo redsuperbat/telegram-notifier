@@ -13,9 +13,8 @@ import (
 	"rsb.asuscomm.com/telegram-notifier/consuming"
 )
 
-type ChatStartedEvent struct {
-	EventType string `json:"eventType"`
-	ChatId    string `json:"chatId"`
+type ChatCreatedEvent struct {
+	ChatId string `json:"chat_id"`
 }
 
 func loadEnvVars() {
@@ -43,9 +42,8 @@ func main() {
 	if err != nil {
 		log.Fatalln("Invalid chat id provided, expected number got", chatIdStr)
 	}
-	// Kafka stuff
-	kafkaMsgChan := make(chan []byte)
-	startConsuming, stopConsuming := consuming.NewConsumer(kafkaMsgChan, os.Getenv("GROUP_ID"))
+	msgChan := make(chan []byte)
+	startConsuming, stopConsuming := consuming.NewConsumer(msgChan, os.Getenv("GROUP_ID"))
 	go startConsuming()
 	defer stopConsuming()
 
@@ -56,25 +54,21 @@ func main() {
 		log.Panicf("Unable to create telegram bot API because of %v", err.Error())
 	}
 
-	// Listen to one topic and send a message to telegram if someone wants to start a chat
-	log.Println("Started the kafka connection and reading messages from kafka")
-	for kafkaMsg := range kafkaMsgChan {
-		var event ChatStartedEvent
+	// Listen to the stream and send a message to telegram if someone wants to start a chat
+	for kafkaMsg := range msgChan {
+		var event ChatCreatedEvent
 		if err := json.Unmarshal(kafkaMsg, &event); err != nil {
 			log.Println("Unable to Unmarshal event because of error", err.Error())
 			continue
 		}
-		if event.EventType == "ChatStartedEvent" {
-			url := "https://max.netterberg.com/chat/" + event.ChatId
-			text := fmt.Sprintf("Hey, someone wants to chat with you!\nVisit %s to chat with them!", url)
-			msg := tgbotapi.NewMessage(int64(chatId), text)
-			log.Printf("New chat was started sending %s to chat %v", text, chatId)
-			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Unable to send message because of %v", err.Error())
-			}
-		} else {
-			log.Println("Event was not a chat started event, continuing...")
+		url := "https://chat.netterberg.me/chats/" + event.ChatId
+		text := fmt.Sprintf("Hey, someone wants to chat with you!\nVisit %s to chat with them!", url)
+		msg := tgbotapi.NewMessage(int64(chatId), text)
+		log.Printf("New chat was started sending %s to chat %v", text, chatId)
+		if _, err := bot.Send(msg); err != nil {
+			log.Printf("Unable to send message because of %v", err.Error())
 		}
+
 	}
 
 }

@@ -4,48 +4,66 @@ import (
 	"context"
 	"log"
 	"os"
-	"time"
 
-	"github.com/segmentio/kafka-go"
+	"github.com/EventStore/EventStore-Client-Go/esdb"
 )
 
-type ConsumerFunc = func(kafka.Message) error
+func NewEsClient() *esdb.Client {
+	uri := os.Getenv("EVENTSTORE_URI")
+	settings, err := esdb.ParseConnectionString(uri)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	db, err := esdb.NewClient(settings)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return db
+}
 
 func NewConsumer(c chan []byte, groupId string) (func(), func() error) {
-	// make a new reader that consumes from topic-A
-	kafkaBroker := os.Getenv("KAFKA_BROKER")
-	if kafkaBroker == "" {
-		kafkaBroker = "localhost:9092"
+
+	client := NewEsClient()
+
+	err := client.CreatePersistentSubscription(context.Background(), "chat-stream", "telegram-notifier", esdb.PersistentStreamSubscriptionOptions{})
+
+	serr, ok := err.(*esdb.PersistentSubscriptionError)
+	if !ok {
+		log.Fatalln(err)
 	}
 
-	kafkaTopic := os.Getenv("KAFKA_TOPIC")
-	if kafkaTopic == "" {
-		log.Fatalln("A topic must be provided")
+	if serr.Code != 6 {
+		log.Fatalln(serr)
 	}
 
-	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     []string{kafkaBroker},
-		GroupID:     groupId,
-		Topic:       kafkaTopic,
-		MinBytes:    10e3, // 10KB
-		MaxBytes:    10e6, // 10MB
-		Partition:   0,
-		StartOffset: kafka.LastOffset,
-		MaxWait:     time.Millisecond * 200,
-	})
+	sub, err := client.ConnectToPersistentSubscription(context.Background(), "chat-stream", "telegram-notifier", esdb.ConnectToPersistentSubscriptionOptions{})
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	return func() {
 			log.Println("Starting consumer...")
 			for {
-				m, err := r.ReadMessage(context.Background())
-				if err != nil {
-					log.Println(err)
+				e := sub.Recv()
+				if e.SubscriptionDropped != nil {
+					log.Println(e.SubscriptionDropped.Error)
+					break
+				}
+				if e.EventAppeared == nil {
 					continue
 				}
-				c <- m.Value
+				log.Println("Received event", string(e.EventAppeared.Event.Data))
+				if e.EventAppeared.Event.EventType != "ChatCreatedEvent" {
+					sub.Ack(e.EventAppeared)
+					continue
+				}
+				c <- e.EventAppeared.Event.Data
+				sub.Ack(e.EventAppeared)
 			}
 		}, func() error {
 			log.Println("Closing connection to kafka...")
-			return r.Close()
+			return sub.Close()
 		}
 }
