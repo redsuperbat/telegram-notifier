@@ -34,7 +34,7 @@ func main() {
 	if botToken == "" {
 		log.Fatalln("No telegram bot token provided")
 	}
-	chatIdStr := os.Getenv("CHAT_ID")
+	chatIdStr := os.Getenv("TELEGRAM_CHAT_ID")
 	if chatIdStr == "" {
 		log.Fatalln("No chat id was provided")
 	}
@@ -43,7 +43,7 @@ func main() {
 		log.Fatalln("Invalid chat id provided, expected number got", chatIdStr)
 	}
 	msgChan := make(chan []byte)
-	startConsuming, stopConsuming := consuming.NewConsumer(msgChan, os.Getenv("GROUP_ID"))
+	startConsuming, stopConsuming := consuming.NewConsumer(msgChan)
 	go startConsuming()
 	defer stopConsuming()
 

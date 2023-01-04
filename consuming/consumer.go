@@ -23,7 +23,7 @@ func NewEsClient() *esdb.Client {
 	return db
 }
 
-func NewConsumer(c chan []byte, groupId string) (func(), func() error) {
+func NewConsumer(c chan []byte) (func(), func() error) {
 
 	client := NewEsClient()
 

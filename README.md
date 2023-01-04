@@ -1,3 +1,3 @@
 # Telegram Notifier
 
-This bot listens to my private kafka instance for events regarding starting chats and notifies me when someone started a new one.
+This bot subscribes to an eventstore instance listening to events and notifies me when someone started a chat.
